@@ -64,12 +64,14 @@ class Dimension(Enum):
     ACELERACION = "L/T²"  # m/s²
     AREA = "L²"  # m²
     VOLUMEN = "L³"  # m³
+    FRECUENCIA = "1/T"  # s⁻¹ (constante cinética)
 
     # Dimensiones derivadas - Transferencia
     DIFUSIVIDAD = "L²/T"  # m²/s
     CONCENTRACION = "N/L³"  # mol/m³
     FLUJO_MOLAR = "N/(L²·T)"  # mol/(m²·s)
     TASA_REACCION = "N/(L³·T)"  # mol/(m³·s)
+    TASA_REACCION_VOLUMETRICA = "N/(L³·T)"  # mol/(m³·s) - alias
 
     # Dimensiones derivadas - Cinética
     CONSTANTE_CINETICA_1ER_ORDEN = "1/T"  # s⁻¹
