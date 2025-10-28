@@ -450,5 +450,280 @@ def calcular_condicionamiento_aproximado(A: sparse.spmatrix) -> float:
 
 
 # ============================================================================
+# MATRICES DE CRANK-NICOLSON
+# ============================================================================
+
+
+def construir_matriz_reaccion(k_app_field: np.ndarray) -> sparse.csr_matrix:
+    """
+    Construye matriz diagonal del término de reacción.
+
+    La matriz K es diagonal con K[k,k] = k_app en el nodo k.
+
+    Parameters
+    ----------
+    k_app_field : np.ndarray, shape (nr, ntheta)
+        Campo de constante cinética aparente [1/s]
+
+    Returns
+    -------
+    K : sparse.csr_matrix, shape (N, N)
+        Matriz diagonal dispersa del término de reacción
+
+    Examples
+    --------
+    >>> k_app_field = 0.5 * np.ones((61, 96))
+    >>> K = construir_matriz_reaccion(k_app_field)
+    >>> print(f"K shape: {K.shape}, diagonal: {K.diagonal()[0]}")
+    """
+    # Aplanar campo a vector 1D
+    k_app_vec = k_app_field.ravel()
+
+    # Crear matriz diagonal dispersa
+    K = sparse.diags(k_app_vec, format="csr")
+
+    return K
+
+
+def construir_matrices_crank_nicolson(
+    malla, D_eff: float, k_app_field: np.ndarray, dt: float
+) -> tuple:
+    """
+    Construye matrices A y B del esquema Crank-Nicolson.
+
+    El esquema Crank-Nicolson para:
+        ∂C/∂t = D_eff·∇²C - k_app·C
+
+    Se discretiza como:
+        (C^(n+1) - C^n) / dt = 0.5·[(L·C)^(n+1) + (L·C)^n] - 0.5·k_app·[C^(n+1) + C^n]
+
+    Reordenando:
+        [I - (dt/2)·(L - K)]·C^(n+1) = [I + (dt/2)·(L - K)]·C^n
+
+    Donde:
+        A = I - (dt/2)·(L - K)  (lado implícito)
+        B = I + (dt/2)·(L - K)  (lado explícito)
+        L: operador Laplaciano
+        K: matriz diagonal con k_app
+        I: matriz identidad
+
+    Parameters
+    ----------
+    malla : MallaPolar2D
+        Malla polar 2D
+    D_eff : float
+        Difusividad efectiva [m²/s]
+    k_app_field : np.ndarray, shape (nr, ntheta)
+        Campo de constante cinética aparente [1/s]
+    dt : float
+        Paso temporal [s]
+
+    Returns
+    -------
+    A : sparse.csr_matrix, shape (N, N)
+        Matriz del lado implícito
+    B : sparse.csr_matrix, shape (N, N)
+        Matriz del lado explícito
+
+    Notes
+    -----
+    El esquema Crank-Nicolson es:
+    - Incondicionalmente estable
+    - Segundo orden en tiempo: O(dt²)
+    - Requiere resolver sistema lineal A·x = b en cada paso
+
+    Examples
+    --------
+    >>> from src.geometria.mallado import MallaPolar2D
+    >>> from src.config.parametros import ParametrosMaestros
+    >>> params = ParametrosMaestros()
+    >>> malla = MallaPolar2D(params)
+    >>> k_app_field = malla.generar_campo_k_app(params.cinetica.k_app)
+    >>> A, B = construir_matrices_crank_nicolson(malla, params.difusion.D_eff, k_app_field, 0.001)
+    >>> print(f"A shape: {A.shape}, B shape: {B.shape}")
+    """
+    logger.info(f"Construyendo matrices Crank-Nicolson con dt={dt:.3e}...")
+
+    # Construir operador Laplaciano L
+    L = construir_matriz_laplaciana_2d_polar(malla, D_eff)
+
+    # Construir matriz de reacción K
+    K = construir_matriz_reaccion(k_app_field)
+
+    # Tamaño del sistema
+    N = malla.nr * malla.ntheta
+
+    # Matriz identidad
+    I = sparse.eye(N, format="csr")
+
+    # Operador combinado: (L - K)
+    # Nota: K tiene signo negativo porque el término es -k_app·C
+    operador = L - K
+
+    # Construir matrices A y B
+    # A = I - (dt/2)·(L - K)
+    A = I - (dt / 2.0) * operador
+
+    # B = I + (dt/2)·(L - K)
+    B = I + (dt / 2.0) * operador
+
+    logger.info(f"Matrices CN construidas: A nnz={A.nnz}, B nnz={B.nnz}")
+
+    return A, B
+
+
+def aplicar_termino_reaccion(
+    C_vec: np.ndarray, k_app_vec: np.ndarray, dt: float
+) -> np.ndarray:
+    """
+    Aplica el término de reacción de primer orden: -k_app·C·dt.
+
+    Parameters
+    ----------
+    C_vec : np.ndarray, shape (N,)
+        Vector de concentraciones
+    k_app_vec : np.ndarray, shape (N,)
+        Vector de constantes cinéticas
+    dt : float
+        Paso temporal [s]
+
+    Returns
+    -------
+    delta_C : np.ndarray, shape (N,)
+        Cambio en concentración por reacción
+
+    Notes
+    -----
+    Para reacción de primer orden:
+        dC/dt = -k_app·C
+
+    Integrando en paso dt:
+        ΔC ≈ -k_app·C·dt  (aproximación de primer orden)
+
+    Examples
+    --------
+    >>> C = np.ones(100)
+    >>> k_app = 0.5 * np.ones(100)
+    >>> dt = 0.001
+    >>> delta_C = aplicar_termino_reaccion(C, k_app, dt)
+    >>> print(f"ΔC = {delta_C[0]:.6f}")  # Debe ser negativo
+    """
+    # Término de reacción: -k_app·C·dt
+    delta_C = -k_app_vec * C_vec * dt
+
+    return delta_C
+
+
+# ============================================================================
+# INFORMACIÓN DE MATRICES CRANK-NICOLSON
+# ============================================================================
+
+
+def obtener_info_matrices_cn(A: sparse.spmatrix, B: sparse.spmatrix, dt: float) -> Dict:
+    """
+    Obtiene información de las matrices A y B de Crank-Nicolson.
+
+    Parameters
+    ----------
+    A : sparse.spmatrix
+        Matriz del lado implícito
+    B : sparse.spmatrix
+        Matriz del lado explícito
+    dt : float
+        Paso temporal [s]
+
+    Returns
+    -------
+    info : Dict
+        Diccionario con información de A y B
+
+    Examples
+    --------
+    >>> info = obtener_info_matrices_cn(A, B, dt=0.001)
+    >>> print(f"dt = {info['dt']} s")
+    """
+    info_A = obtener_info_matriz(A)
+    info_B = obtener_info_matriz(B)
+
+    info = {
+        "dt": dt,
+        "A": info_A,
+        "B": info_B,
+        "Fo": None,  # Se puede calcular si se conoce dr y D_eff
+    }
+
+    return info
+
+
+def generar_reporte_matrices_cn(
+    A: sparse.spmatrix, B: sparse.spmatrix, dt: float, malla=None
+) -> str:
+    """
+    Genera reporte de las matrices Crank-Nicolson.
+
+    Parameters
+    ----------
+    A : sparse.spmatrix
+        Matriz del lado implícito
+    B : sparse.spmatrix
+        Matriz del lado explícito
+    dt : float
+        Paso temporal [s]
+    malla : MallaPolar2D, optional
+        Objeto de malla
+
+    Returns
+    -------
+    reporte : str
+        Reporte formateado
+
+    Examples
+    --------
+    >>> reporte = generar_reporte_matrices_cn(A, B, dt, malla)
+    >>> print(reporte)
+    """
+    info = obtener_info_matrices_cn(A, B, dt)
+
+    reporte = f"""
+╔══════════════════════════════════════════════════════════════╗
+║        MATRICES CRANK-NICOLSON                               ║
+╚══════════════════════════════════════════════════════════════╝
+
+Esquema: A·C^(n+1) = B·C^n + b
+
+Paso Temporal:
+  - dt:                 {dt:.3e} s
+
+MATRIZ A (Lado Implícito):
+  - Shape:              {info['A']['shape'][0]} × {info['A']['shape'][1]}
+  - Elementos no-cero:  {info['A']['nnz']:,}
+  - Sparsity:           {info['A']['sparsity']:.3f}%
+  - Diagonal mín/max:   {info['A']['diagonal_min']:.3e} / {info['A']['diagonal_max']:.3e}
+
+MATRIZ B (Lado Explícito):
+  - Shape:              {info['B']['shape'][0]} × {info['B']['shape'][1]}
+  - Elementos no-cero:  {info['B']['nnz']:,}
+  - Sparsity:           {info['B']['sparsity']:.3f}%
+  - Diagonal mín/max:   {info['B']['diagonal_min']:.3e} / {info['B']['diagonal_max']:.3e}
+
+Propiedades:
+  - Método:             Crank-Nicolson (implícito)
+  - Orden temporal:     O(dt²) - segundo orden
+  - Estabilidad:        Incondicionalmente estable
+  - Simetría:           Aproximadamente simétrica
+"""
+
+    if malla is not None:
+        reporte += f"""
+Contexto de Malla:
+  - Total nodos:        {malla.nr * malla.ntheta:,}
+  - dr:                 {malla.dr:.3e} m
+  - dθ:                 {malla.dtheta:.4f} rad
+    """
+
+    return reporte
+
+
+# ============================================================================
 # FIN DEL MÓDULO
 # ============================================================================
