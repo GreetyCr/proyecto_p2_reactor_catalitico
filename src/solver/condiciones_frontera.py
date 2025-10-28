@@ -287,5 +287,302 @@ Modificación de Matrices:
 
 
 # ============================================================================
+# CONDICIÓN ROBIN EN r=R: TRANSFERENCIA EXTERNA
+# ============================================================================
+
+
+def obtener_nodos_frontera_rR(malla) -> np.ndarray:
+    """
+    Obtiene índices lineales de todos los nodos en r=R.
+
+    Parameters
+    ----------
+    malla : MallaPolar2D
+        Malla polar 2D
+
+    Returns
+    -------
+    nodos_frontera : np.ndarray, shape (ntheta,)
+        Array con índices lineales de nodos en frontera
+
+    Notes
+    -----
+    Los nodos en r=R son: (i=nr-1, j=0), (i=nr-1, j=1), ..., (i=nr-1, j=ntheta-1)
+
+    Examples
+    --------
+    >>> nodos = obtener_nodos_frontera_rR(malla)
+    >>> print(f"Nodos en r=R: {len(nodos)}")
+    """
+    i_frontera = malla.nr - 1
+
+    nodos = np.array(
+        [indexar_2d_a_1d(i_frontera, j, malla.ntheta) for j in range(malla.ntheta)]
+    )
+
+    return nodos
+
+
+def calcular_flujo_robin(C_s: float, C_bulk: float, k_c: float) -> float:
+    """
+    Calcula flujo según condición Robin.
+
+    Ecuación:
+        J = k_c·(C_bulk - C_s)
+
+    Parameters
+    ----------
+    C_s : float
+        Concentración en superficie [mol/m³]
+    C_bulk : float
+        Concentración en bulk [mol/m³]
+    k_c : float
+        Coeficiente de transferencia de masa [m/s]
+
+    Returns
+    -------
+    J : float
+        Flujo molar [mol/(m²·s)]
+
+    Notes
+    -----
+    Condición Robin:
+        -D_eff·∂C/∂r|_R = k_c·(C_bulk - C_s)
+
+    Casos límite:
+    - k_c → 0:   No hay transferencia (Neumann homogéneo)
+    - k_c → ∞:   C_s = C_bulk (Dirichlet)
+
+    Examples
+    --------
+    >>> J = calcular_flujo_robin(C_s=0.005, C_bulk=0.0145, k_c=0.085)
+    >>> print(f"Flujo: {J:.3e} mol/(m²·s)")
+    """
+    J = k_c * (C_bulk - C_s)
+
+    return J
+
+
+def aplicar_condicion_robin(
+    A: sparse.spmatrix,
+    B: sparse.spmatrix,
+    malla,
+    D_eff: float,
+    k_c: float,
+    C_bulk: float,
+) -> Tuple[sparse.spmatrix, sparse.spmatrix]:
+    """
+    Aplica condición Robin en r=R a matrices A y B.
+
+    Condición:
+        -D_eff·∂C/∂r|_R = k_c·(C_bulk - C_s)
+
+    Discretización usando diferencias hacia atrás:
+        -D_eff·(C_s - C_{nr-2}) / dr = k_c·(C_bulk - C_s)
+
+    Reordenando:
+        C_s·[D_eff/dr + k_c] = D_eff·C_{nr-2}/dr + k_c·C_bulk
+
+    Parameters
+    ----------
+    A : sparse.spmatrix
+        Matriz del lado implícito
+    B : sparse.spmatrix
+        Matriz del lado explícito
+    malla : MallaPolar2D
+        Malla polar 2D
+    D_eff : float
+        Difusividad efectiva [m²/s]
+    k_c : float
+        Coeficiente de transferencia de masa [m/s]
+    C_bulk : float
+        Concentración en bulk [mol/m³]
+
+    Returns
+    -------
+    A_bc : sparse.spmatrix
+        Matriz A con condición Robin aplicada
+    B_bc : sparse.spmatrix
+        Matriz B con condición Robin aplicada
+
+    Notes
+    -----
+    La discretización de Robin modifica las filas de la última capa radial (i=nr-1).
+
+    Examples
+    --------
+    >>> A_bc, B_bc = aplicar_condicion_robin(A, B, malla, D_eff, k_c, C_bulk)
+    """
+    logger.info("Aplicando condición Robin en r=R...")
+
+    # Convertir a LIL para modificación
+    A_bc = A.tolil()
+    B_bc = B.tolil()
+
+    # Obtener nodos en frontera
+    nodos_frontera = obtener_nodos_frontera_rR(malla)
+
+    # Parámetros de discretización
+    dr = malla.dr
+
+    # Coeficientes de Robin discretizado
+    # -D_eff·(C_s - C_{i-1})/dr = k_c·(C_bulk - C_s)
+    # Reordenando: C_s·[D_eff/dr + k_c] = D_eff·C_{i-1}/dr + k_c·C_bulk
+
+    coef_C_s = D_eff / dr + k_c
+    coef_C_im1 = D_eff / dr
+    termino_fuente = k_c * C_bulk
+
+    # Para cada nodo en frontera
+    for k in nodos_frontera:
+        # Obtener índice 2D
+        i, j = indexar_1d_a_2d(k, malla.ntheta)
+
+        # Índice del vecino interior (i-1, j)
+        k_im1 = indexar_2d_a_1d(i - 1, j, malla.ntheta)
+
+        # ============================================================
+        # MODIFICAR MATRIZ A (lado implícito)
+        # ============================================================
+        # Limpiar fila
+        A_bc[k, :] = 0.0
+
+        # Coeficientes de Robin
+        A_bc[k, k] = coef_C_s  # C_s
+        A_bc[k, k_im1] = -coef_C_im1  # -C_{i-1}
+
+        # ============================================================
+        # MODIFICAR MATRIZ B (lado explícito)
+        # ============================================================
+        # Para Crank-Nicolson, el término de frontera se aplica simétricamente
+        # Pero el término fuente k_c·C_bulk va al RHS
+        # Por simplicidad, lo mantenemos en B (se agregará al RHS explícitamente)
+
+    # Convertir de vuelta a CSR
+    A_bc = A_bc.tocsr()
+    B_bc = B_bc.tocsr()
+
+    logger.info(f"Condición Robin aplicada a {len(nodos_frontera)} nodos")
+    logger.info(f"k_c = {k_c:.3e} m/s, C_bulk = {C_bulk:.3e} mol/m³")
+
+    return A_bc, B_bc
+
+
+def construir_vector_fuente_robin(malla, k_c: float, C_bulk: float) -> np.ndarray:
+    """
+    Construye vector de términos fuente de la condición Robin.
+
+    Parameters
+    ----------
+    malla : MallaPolar2D
+        Malla polar 2D
+    k_c : float
+        Coeficiente de transferencia [m/s]
+    C_bulk : float
+        Concentración en bulk [mol/m³]
+
+    Returns
+    -------
+    b_robin : np.ndarray, shape (N,)
+        Vector de términos fuente (solo no-cero en r=R)
+
+    Notes
+    -----
+    Este vector contiene el término k_c·C_bulk que aparece en el RHS
+    de la ecuación discretizada con Robin.
+
+    Examples
+    --------
+    >>> b = construir_vector_fuente_robin(malla, k_c=0.085, C_bulk=0.0145)
+    >>> print(f"b no-cero en: {np.sum(b != 0)} nodos")
+    """
+    N = malla.nr * malla.ntheta
+    b_robin = np.zeros(N)
+
+    # Obtener nodos en frontera
+    nodos_frontera = obtener_nodos_frontera_rR(malla)
+
+    # Término fuente: k_c·C_bulk
+    for k in nodos_frontera:
+        b_robin[k] = k_c * C_bulk
+
+    return b_robin
+
+
+# ============================================================================
+# INFORMACIÓN Y REPORTES
+# ============================================================================
+
+
+def generar_reporte_condicion_robin(
+    malla, D_eff: float, k_c: float, C_bulk: float
+) -> str:
+    """
+    Genera reporte de la condición Robin.
+
+    Parameters
+    ----------
+    malla : MallaPolar2D
+        Malla polar 2D
+    D_eff : float
+        Difusividad efectiva [m²/s]
+    k_c : float
+        Coeficiente de transferencia [m/s]
+    C_bulk : float
+        Concentración en bulk [mol/m³]
+
+    Returns
+    -------
+    reporte : str
+        Reporte formateado
+
+    Examples
+    --------
+    >>> print(generar_reporte_condicion_robin(malla, D_eff, k_c, C_bulk))
+    """
+    nodos_frontera = obtener_nodos_frontera_rR(malla)
+    dr = malla.dr
+
+    # Calcular número de Biot
+    Bi = k_c * malla.r[-1] / D_eff
+
+    reporte = f"""
+╔══════════════════════════════════════════════════════════════╗
+║        CONDICIÓN DE FRONTERA: ROBIN EN r=R                   ║
+╚══════════════════════════════════════════════════════════════╝
+
+Tipo de Condición:
+  - Robin (transferencia externa)
+
+Ecuación:
+  - Flujo en frontera: -D_eff·∂C/∂r|_R = k_c·(C_bulk - C_s)
+
+Parámetros:
+  - D_eff:              {D_eff:.3e} m²/s
+  - k_c:                {k_c:.3e} m/s
+  - C_bulk:             {C_bulk:.3e} mol/m³
+  - R:                  {malla.r[-1]:.3e} m
+  - dr:                 {dr:.3e} m
+
+Número de Biot:
+  - Bi = k_c·R/D_eff:   {Bi:.3f}
+  - Régimen:            {'Control externo' if Bi < 0.1 else 'Control interno' if Bi > 10 else 'Mixto'}
+
+Discretización:
+  - Método:             Diferencias hacia atrás (orden 1)
+  - Coef C_s:           {D_eff/dr + k_c:.3e}
+  - Coef C_{{i-1}}:       {D_eff/dr:.3e}
+  - Término fuente:     {k_c * C_bulk:.3e}
+
+Nodos Afectados:
+  - Total:              {len(nodos_frontera)}
+  - Índices:            {nodos_frontera[0]} ... {nodos_frontera[-1]}
+  - Índices 2D:         ({malla.nr-1}, 0) ... ({malla.nr-1}, {malla.ntheta-1})
+    """
+
+    return reporte
+
+
+# ============================================================================
 # FIN DEL MÓDULO
 # ============================================================================

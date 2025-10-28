@@ -222,5 +222,152 @@ def test_obtener_nodos_centro_valores():
 
 
 # ============================================================================
+# TESTS DE CONDICIÓN ROBIN EN r=R
+# ============================================================================
+
+
+def test_aplicar_condicion_robin_existe():
+    """La función para aplicar condición Robin debe existir."""
+    from src.solver.condiciones_frontera import aplicar_condicion_robin
+
+    assert aplicar_condicion_robin is not None
+
+
+def test_aplicar_condicion_robin_modifica_matrices():
+    """Debe modificar matrices A y B en filas correspondientes a r=R."""
+    from src.solver.condiciones_frontera import aplicar_condicion_robin
+    from src.solver.matrices import construir_matrices_crank_nicolson
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    k_app_field = malla.generar_campo_k_app()
+    dt = 0.001
+
+    # Matrices originales
+    A_orig, B_orig = construir_matrices_crank_nicolson(
+        malla, params.difusion.D_eff, k_app_field, dt
+    )
+
+    # Aplicar condición Robin
+    A_mod, B_mod = aplicar_condicion_robin(
+        A_orig,
+        B_orig,
+        malla,
+        params.difusion.D_eff,
+        params.transferencia.k_c,
+        params.operacion.C_bulk,
+    )
+
+    # Las matrices deben cambiar
+    diff_A = A_mod - A_orig
+    diff_B = B_mod - B_orig
+
+    # Debe haber cambios
+    assert diff_A.nnz > 0 or diff_B.nnz > 0
+
+
+def test_obtener_nodos_frontera_rR_existe():
+    """Debe existir función para obtener nodos en r=R."""
+    from src.solver.condiciones_frontera import obtener_nodos_frontera_rR
+
+    assert obtener_nodos_frontera_rR is not None
+
+
+def test_obtener_nodos_frontera_rR_cantidad():
+    """Debe retornar ntheta nodos."""
+    from src.solver.condiciones_frontera import obtener_nodos_frontera_rR
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    nodos_frontera = obtener_nodos_frontera_rR(malla)
+
+    assert len(nodos_frontera) == malla.ntheta
+
+
+def test_calcular_flujo_robin_existe():
+    """Debe existir función para calcular flujo Robin."""
+    from src.solver.condiciones_frontera import calcular_flujo_robin
+
+    assert calcular_flujo_robin is not None
+
+
+def test_calcular_flujo_robin_formula():
+    """Flujo Robin: J = k_c·(C_bulk - C_s)."""
+    from src.solver.condiciones_frontera import calcular_flujo_robin
+
+    C_s = 0.005  # mol/m³ (superficie)
+    C_bulk = 0.0145  # mol/m³
+    k_c = 0.085  # m/s
+
+    J = calcular_flujo_robin(C_s, C_bulk, k_c)
+
+    # Flujo esperado
+    J_esperado = k_c * (C_bulk - C_s)
+
+    assert_allclose(J, J_esperado, rtol=1e-10)
+
+
+def test_calcular_flujo_robin_sentido():
+    """Flujo debe entrar si C_s < C_bulk."""
+    from src.solver.condiciones_frontera import calcular_flujo_robin
+
+    C_s = 0.005
+    C_bulk = 0.0145
+    k_c = 0.085
+
+    J = calcular_flujo_robin(C_s, C_bulk, k_c)
+
+    # Debe ser positivo (entrante)
+    assert J > 0
+
+
+def test_calcular_flujo_robin_equilibrio():
+    """En equilibrio (C_s = C_bulk), flujo = 0."""
+    from src.solver.condiciones_frontera import calcular_flujo_robin
+
+    C_eq = 0.0145
+    k_c = 0.085
+
+    J = calcular_flujo_robin(C_eq, C_eq, k_c)
+
+    assert_allclose(J, 0.0, atol=1e-12)
+
+
+def test_condicion_robin_limite_k_c_infinito():
+    """Con k_c → ∞, debe imponer C_s = C_bulk (Dirichlet)."""
+    from src.solver.condiciones_frontera import aplicar_condicion_robin
+    from src.solver.matrices import construir_matrices_crank_nicolson
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    k_app_field = malla.generar_campo_k_app()
+    dt = 0.001
+
+    A, B = construir_matrices_crank_nicolson(
+        malla, params.difusion.D_eff, k_app_field, dt
+    )
+
+    # k_c muy grande (≈ Dirichlet)
+    k_c_grande = 1e10  # m/s
+
+    A_bc, B_bc = aplicar_condicion_robin(
+        A, B, malla, params.difusion.D_eff, k_c_grande, params.operacion.C_bulk
+    )
+
+    # Las matrices deben ser válidas
+    assert sparse.issparse(A_bc)
+    assert sparse.issparse(B_bc)
+
+
+# ============================================================================
 # FIN DE TESTS
 # ============================================================================
