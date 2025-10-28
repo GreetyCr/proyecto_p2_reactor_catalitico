@@ -480,5 +480,140 @@ def test_matriz_implementa_periodicidad_implicitamente():
 
 
 # ============================================================================
+# TESTS DE INTERFAZ ACTIVO-DEFECTO
+# ============================================================================
+
+
+def test_identificar_nodos_interfaz_existe():
+    """Debe existir función para identificar nodos en interfaz."""
+    from src.solver.condiciones_frontera import identificar_nodos_interfaz
+
+    assert identificar_nodos_interfaz is not None
+
+
+def test_identificar_nodos_interfaz_cantidad():
+    """Debe retornar nodos en el borde del defecto."""
+    from src.solver.condiciones_frontera import identificar_nodos_interfaz
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    nodos_interfaz = identificar_nodos_interfaz(malla)
+
+    # Debe haber nodos en la interfaz
+    assert len(nodos_interfaz) > 0
+
+
+def test_verificar_continuidad_flujo_existe():
+    """Debe existir función para verificar continuidad de flujo."""
+    from src.solver.condiciones_frontera import verificar_continuidad_flujo
+
+    assert verificar_continuidad_flujo is not None
+
+
+def test_verificar_continuidad_flujo_campo_suave():
+    """Campo suave debe tener flujo continuo."""
+    from src.solver.condiciones_frontera import verificar_continuidad_flujo
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    # Campo suave (sin discontinuidades)
+    C_field = np.ones((malla.nr, malla.ntheta))
+
+    es_continuo = verificar_continuidad_flujo(
+        C_field, malla, params.difusion.D_eff, tol=1e-6
+    )
+
+    assert es_continuo == True
+
+
+def test_calcular_salto_flujo_interfaz_existe():
+    """Debe existir función para calcular salto de flujo."""
+    from src.solver.condiciones_frontera import calcular_salto_flujo_interfaz
+
+    assert calcular_salto_flujo_interfaz is not None
+
+
+def test_calcular_salto_flujo_campo_continuo():
+    """Campo continuo debe tener salto de flujo pequeño."""
+    from src.solver.condiciones_frontera import calcular_salto_flujo_interfaz
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    # Campo continuo
+    C_field = np.ones((malla.nr, malla.ntheta))
+
+    salto_max = calcular_salto_flujo_interfaz(C_field, malla, params.difusion.D_eff)
+
+    # Salto debe ser muy pequeño
+    assert salto_max < 1e-10
+
+
+def test_matriz_no_introduce_discontinuidad():
+    """La matriz L no debe introducir discontinuidades artificiales."""
+    from src.solver.matrices import construir_matriz_laplaciana_2d_polar
+    from src.solver.matrices import indexar_2d_a_1d
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    # Campo suave
+    C_field = np.ones((malla.nr, malla.ntheta))
+    C_vec = C_field.ravel()
+
+    # Aplicar Laplaciano
+    L = construir_matriz_laplaciana_2d_polar(malla, params.difusion.D_eff)
+    L_C = L @ C_vec
+
+    # Para campo constante, Laplaciano debe ser ~0 en nodos interiores
+    # Excluir nodos en fronteras (r=0 y r=R)
+    nodos_interiores = []
+    for i in range(1, malla.nr - 1):  # Excluir i=0 y i=nr-1
+        for j in range(malla.ntheta):
+            k = indexar_2d_a_1d(i, j, malla.ntheta)
+            nodos_interiores.append(k)
+
+    L_C_interior = L_C[nodos_interiores]
+
+    # En nodos interiores, debe ser ~0
+    assert np.max(np.abs(L_C_interior)) < 1e-8
+
+
+def test_campo_k_app_tiene_interfaz():
+    """El campo k_app debe tener región de transición."""
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    k_app_field = malla.generar_campo_k_app()
+
+    # Debe tener dos valores: 0 (defecto) y k_app (activo)
+    valores_unicos = np.unique(k_app_field)
+
+    assert len(valores_unicos) == 2
+    assert 0.0 in valores_unicos
+    assert params.cinetica.k_app in valores_unicos
+
+
+def test_generar_reporte_interfaz_existe():
+    """Debe existir función para generar reporte de interfaz."""
+    from src.solver.condiciones_frontera import generar_reporte_interfaz
+
+    assert generar_reporte_interfaz is not None
+
+
+# ============================================================================
 # FIN DE TESTS
 # ============================================================================

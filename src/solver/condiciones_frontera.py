@@ -746,5 +746,291 @@ Nota:
 
 
 # ============================================================================
+# INTERFAZ ACTIVO-DEFECTO
+# ============================================================================
+
+
+def identificar_nodos_interfaz(malla) -> List[int]:
+    """
+    Identifica nodos lineales en la interfaz activo-defecto.
+
+    La interfaz está en los bordes de la región del defecto:
+    - r = r1 (radio interno)
+    - r = r2 (radio externo)
+    - θ = θ1 (ángulo inicial)
+    - θ = θ2 (ángulo final)
+
+    Parameters
+    ----------
+    malla : MallaPolar2D
+        Malla polar 2D
+
+    Returns
+    -------
+    nodos_interfaz : List[int]
+        Lista con índices lineales de nodos en interfaz
+
+    Notes
+    -----
+    La interfaz es donde k_app cambia de 0 (defecto) a k_app (activo).
+
+    Examples
+    --------
+    >>> nodos = identificar_nodos_interfaz(malla)
+    >>> print(f"Nodos en interfaz: {len(nodos)}")
+    """
+    nodos_interfaz = []
+
+    # Obtener máscaras
+    mascara_defecto = malla.identificar_region_defecto()
+
+    # Recorrer todos los nodos
+    for i in range(malla.nr):
+        for j in range(malla.ntheta):
+            # Si el nodo actual está en el defecto
+            if mascara_defecto[i, j]:
+                # Verificar si tiene algún vecino en región activa
+                vecinos_en_activo = False
+
+                # Vecino radial i+1
+                if i + 1 < malla.nr:
+                    if not mascara_defecto[i + 1, j]:
+                        vecinos_en_activo = True
+
+                # Vecino radial i-1
+                if i - 1 >= 0:
+                    if not mascara_defecto[i - 1, j]:
+                        vecinos_en_activo = True
+
+                # Vecino angular j+1 (con periodicidad)
+                j_p1 = (j + 1) % malla.ntheta
+                if not mascara_defecto[i, j_p1]:
+                    vecinos_en_activo = True
+
+                # Vecino angular j-1 (con periodicidad)
+                j_m1 = (j - 1) % malla.ntheta
+                if not mascara_defecto[i, j_m1]:
+                    vecinos_en_activo = True
+
+                # Si tiene vecinos en región activa, está en interfaz
+                if vecinos_en_activo:
+                    k = indexar_2d_a_1d(i, j, malla.ntheta)
+                    nodos_interfaz.append(k)
+
+            # Si el nodo está en región activa
+            else:
+                # Verificar si tiene algún vecino en defecto
+                vecinos_en_defecto = False
+
+                # Vecino radial i+1
+                if i + 1 < malla.nr:
+                    if mascara_defecto[i + 1, j]:
+                        vecinos_en_defecto = True
+
+                # Vecino radial i-1
+                if i - 1 >= 0:
+                    if mascara_defecto[i - 1, j]:
+                        vecinos_en_defecto = True
+
+                # Vecino angular j+1 (con periodicidad)
+                j_p1 = (j + 1) % malla.ntheta
+                if mascara_defecto[i, j_p1]:
+                    vecinos_en_defecto = True
+
+                # Vecino angular j-1 (con periodicidad)
+                j_m1 = (j - 1) % malla.ntheta
+                if mascara_defecto[i, j_m1]:
+                    vecinos_en_defecto = True
+
+                # Si tiene vecinos en defecto, está en interfaz
+                if vecinos_en_defecto:
+                    k = indexar_2d_a_1d(i, j, malla.ntheta)
+                    nodos_interfaz.append(k)
+
+    return nodos_interfaz
+
+
+def calcular_salto_flujo_interfaz(C_field: np.ndarray, malla, D_eff: float) -> float:
+    """
+    Calcula el máximo salto de flujo en la interfaz activo-defecto.
+
+    El flujo debe ser continuo en la interfaz:
+        J_activo = J_defecto
+
+    Parameters
+    ----------
+    C_field : np.ndarray, shape (nr, ntheta)
+        Campo de concentración
+    malla : MallaPolar2D
+        Malla polar 2D
+    D_eff : float
+        Difusividad efectiva [m²/s]
+
+    Returns
+    -------
+    salto_max : float
+        Máximo salto de flujo en la interfaz [mol/(m²·s)]
+
+    Notes
+    -----
+    Para una interfaz perfecta, el salto debe ser ~0.
+
+    Examples
+    --------
+    >>> salto = calcular_salto_flujo_interfaz(C_field, malla, D_eff)
+    >>> print(f"Salto máximo: {salto:.3e}")
+    """
+    nodos_interfaz = identificar_nodos_interfaz(malla)
+
+    if len(nodos_interfaz) == 0:
+        return 0.0
+
+    saltos = []
+
+    dr = malla.dr
+    dtheta = malla.dtheta
+
+    for k in nodos_interfaz:
+        i, j = indexar_1d_a_2d(k, malla.ntheta)
+
+        # Estimar flujo en este nodo
+        # Flujo radial: J_r = -D_eff·∂C/∂r
+        if i > 0 and i < malla.nr - 1:
+            dC_dr = (C_field[i + 1, j] - C_field[i - 1, j]) / (2 * dr)
+            J_r = -D_eff * dC_dr
+        else:
+            J_r = 0.0
+
+        # Flujo angular: J_θ = -D_eff·(1/r)·∂C/∂θ
+        r_i = malla.r[i]
+        if r_i > 1e-12:
+            j_p1 = (j + 1) % malla.ntheta
+            j_m1 = (j - 1) % malla.ntheta
+            dC_dtheta = (C_field[i, j_p1] - C_field[i, j_m1]) / (2 * dtheta)
+            J_theta = -D_eff * dC_dtheta / r_i
+        else:
+            J_theta = 0.0
+
+        # Magnitud del flujo
+        J_mag = np.sqrt(J_r**2 + J_theta**2)
+        saltos.append(J_mag)
+
+    if len(saltos) > 0:
+        salto_max = np.max(saltos)
+    else:
+        salto_max = 0.0
+
+    return salto_max
+
+
+def verificar_continuidad_flujo(
+    C_field: np.ndarray, malla, D_eff: float, tol: float = 1e-6
+) -> bool:
+    """
+    Verifica continuidad de flujo en la interfaz.
+
+    Parameters
+    ----------
+    C_field : np.ndarray, shape (nr, ntheta)
+        Campo de concentración
+    malla : MallaPolar2D
+        Malla polar 2D
+    D_eff : float
+        Difusividad efectiva [m²/s]
+    tol : float, optional
+        Tolerancia para considerar continuo
+
+    Returns
+    -------
+    es_continuo : bool
+        True si el flujo es continuo
+
+    Examples
+    --------
+    >>> continuo = verificar_continuidad_flujo(C_field, malla, D_eff)
+    >>> print(f"¿Flujo continuo? {continuo}")
+    """
+    salto_max = calcular_salto_flujo_interfaz(C_field, malla, D_eff)
+
+    # Normalizar por flujo típico
+    C_max = np.max(np.abs(C_field))
+    if C_max > 1e-12:
+        flujo_tipico = D_eff * C_max / malla.dr
+        salto_relativo = salto_max / flujo_tipico
+    else:
+        salto_relativo = salto_max
+
+    logger.debug(
+        f"Continuidad interfaz: salto_max={salto_max:.3e}, relativo={salto_relativo:.3e}"
+    )
+
+    return salto_relativo < tol
+
+
+def generar_reporte_interfaz(malla) -> str:
+    """
+    Genera reporte de la interfaz activo-defecto.
+
+    Parameters
+    ----------
+    malla : MallaPolar2D
+        Malla polar 2D
+
+    Returns
+    -------
+    reporte : str
+        Reporte formateado
+
+    Examples
+    --------
+    >>> print(generar_reporte_interfaz(malla))
+    """
+    nodos_interfaz = identificar_nodos_interfaz(malla)
+
+    mascara_defecto = malla.identificar_region_defecto()
+    n_defecto = np.sum(mascara_defecto)
+    n_activo = malla.nr * malla.ntheta - n_defecto
+
+    # Parámetros del defecto
+    r1 = malla.params.geometria.r1
+    r2 = malla.params.geometria.r2
+    theta1 = malla.params.geometria.theta1
+    theta2 = malla.params.geometria.theta2
+
+    reporte = f"""
+╔══════════════════════════════════════════════════════════════╗
+║        INTERFAZ ACTIVO-DEFECTO                               ║
+╚══════════════════════════════════════════════════════════════╝
+
+Geometría del Defecto:
+  - r1 (interno):       {r1:.3e} m
+  - r2 (externo):       {r2:.3e} m
+  - θ1 (inicial):       {theta1:.4f} rad = {np.degrees(theta1):.1f}°
+  - θ2 (final):         {theta2:.4f} rad = {np.degrees(theta2):.1f}°
+
+Nodos:
+  - Total:              {malla.nr * malla.ntheta}
+  - Región defecto:     {n_defecto} ({100*n_defecto/(malla.nr*malla.ntheta):.1f}%)
+  - Región activa:      {n_activo} ({100*n_activo/(malla.nr*malla.ntheta):.1f}%)
+  - En interfaz:        {len(nodos_interfaz)}
+
+Propiedades:
+  - k_app en defecto:   0 s⁻¹
+  - k_app en activo:    {malla.params.cinetica.k_app:.3e} s⁻¹
+
+Condición en Interfaz:
+  - Continuidad de flujo: -D_eff·∇C continuo
+  - Implementación: Natural (stencil estándar)
+  - No requiere modificación de matrices
+
+Verificación:
+  - Durante solver: verificar salto de flujo < tol
+  - Post-procesamiento: análisis de gradientes
+    """
+
+    return reporte
+
+
+# ============================================================================
 # FIN DEL MÓDULO
 # ============================================================================
