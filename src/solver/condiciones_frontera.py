@@ -584,5 +584,167 @@ Nodos Afectados:
 
 
 # ============================================================================
+# PERIODICIDAD ANGULAR (θ=0 ≡ θ=2π)
+# ============================================================================
+
+
+def verificar_periodicidad_angular(
+    C_field: np.ndarray, malla, tol: float = 1e-6
+) -> bool:
+    """
+    Verifica si C satisface periodicidad angular.
+
+    Condición: C(r, θ=0) ≈ C(r, θ=2π) para todo r
+
+    Parameters
+    ----------
+    C_field : np.ndarray, shape (nr, ntheta)
+        Campo de concentración
+    malla : MallaPolar2D
+        Malla polar 2D
+    tol : float, optional
+        Tolerancia para considerar periódico
+
+    Returns
+    -------
+    es_periodico : bool
+        True si satisface periodicidad
+
+    Notes
+    -----
+    La malla implementa periodicidad implícitamente en el stencil.
+    Esta función verifica que el campo calculado sea periódico.
+
+    Examples
+    --------
+    >>> es_per = verificar_periodicidad_angular(C_field, malla)
+    >>> print(f"¿Periódico? {es_per}")
+    """
+    # En la malla discreta:
+    # θ=0 corresponde a j=0
+    # θ=2π NO está en la malla, pero j=ntheta-1 es el último antes de volver a θ=0
+
+    # Por periodicidad, esperamos que C[:, 0] ≈ C[:, ntheta-1] en el límite
+    # Sin embargo, debido a la discretización, pueden no ser exactamente iguales
+
+    # Comparar primera y última columna
+    C_j0 = C_field[:, 0]
+    C_jfinal = C_field[:, -1]
+
+    # Calcular diferencia máxima
+    diff = np.abs(C_j0 - C_jfinal)
+    max_diff = np.max(diff)
+
+    # Variación relativa
+    max_val = np.max(np.abs(C_field))
+    if max_val > 1e-12:
+        variacion_relativa = max_diff / max_val
+    else:
+        variacion_relativa = max_diff
+
+    logger.debug(
+        f"Periodicidad angular: max_diff={max_diff:.3e}, var_rel={variacion_relativa:.3e}"
+    )
+
+    return variacion_relativa < tol
+
+
+def imponer_periodicidad_angular(C_field: np.ndarray, malla) -> np.ndarray:
+    """
+    Impone periodicidad angular en el campo.
+
+    Promedia valores en θ=0 y θ≈2π y los asigna a ambos.
+
+    Parameters
+    ----------
+    C_field : np.ndarray, shape (nr, ntheta)
+        Campo de concentración
+    malla : MallaPolar2D
+        Malla polar 2D
+
+    Returns
+    -------
+    C_periodico : np.ndarray, shape (nr, ntheta)
+        Campo con periodicidad impuesta
+
+    Notes
+    -----
+    Operación: C[:, 0] = C[:, -1] = 0.5·(C[:, 0] + C[:, -1])
+
+    Examples
+    --------
+    >>> C_per = imponer_periodicidad_angular(C_field, malla)
+    """
+    # Copiar campo
+    C_periodico = C_field.copy()
+
+    # Para cada radio
+    for i in range(malla.nr):
+        # Promediar primera y última columna
+        promedio = 0.5 * (C_field[i, 0] + C_field[i, -1])
+
+        # Asignar a ambas
+        C_periodico[i, 0] = promedio
+        C_periodico[i, -1] = promedio
+
+    return C_periodico
+
+
+def generar_reporte_periodicidad_angular(malla) -> str:
+    """
+    Genera reporte de la periodicidad angular.
+
+    Parameters
+    ----------
+    malla : MallaPolar2D
+        Malla polar 2D
+
+    Returns
+    -------
+    reporte : str
+        Reporte formateado
+
+    Examples
+    --------
+    >>> print(generar_reporte_periodicidad_angular(malla))
+    """
+    dtheta = malla.dtheta
+
+    reporte = f"""
+╔══════════════════════════════════════════════════════════════╗
+║        CONDICIÓN: PERIODICIDAD ANGULAR                       ║
+╚══════════════════════════════════════════════════════════════╝
+
+Tipo de Condición:
+  - Periodicidad: θ=0 ≡ θ=2π
+
+Implicación Física:
+  - C(r, θ=0) = C(r, θ=2π) para todo r
+  - El campo debe ser periódico en la dirección angular
+
+Implementación Numérica:
+  - Periodicidad IMPLÍCITA en el stencil angular
+  - Operación módulo: j=-1 → j=nθ-1, j=nθ → j=0
+  - No requiere modificación explícita de matrices
+
+Discretización:
+  - θ ∈ [0, 2π)
+  - dθ:                 {dtheta:.4f} rad
+  - nθ:                 {malla.ntheta}
+  - θ_j = j·dθ:         j=0 → θ=0, j={malla.ntheta-1} → θ={malla.theta[-1]:.4f}
+
+Verificación:
+  - Automática durante solver
+  - Se verifica: ||C[:, 0] - C[:, nθ-1]|| < tol
+
+Nota:
+  - La matriz Laplaciana ya implementa esta condición
+  - No se requiere modificación adicional de A o B
+    """
+
+    return reporte
+
+
+# ============================================================================
 # FIN DEL MÓDULO
 # ============================================================================

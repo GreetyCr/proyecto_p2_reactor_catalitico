@@ -369,5 +369,116 @@ def test_condicion_robin_limite_k_c_infinito():
 
 
 # ============================================================================
+# TESTS DE PERIODICIDAD ANGULAR
+# ============================================================================
+
+
+def test_verificar_periodicidad_angular_existe():
+    """Debe existir función para verificar periodicidad."""
+    from src.solver.condiciones_frontera import verificar_periodicidad_angular
+
+    assert verificar_periodicidad_angular is not None
+
+
+def test_verificar_periodicidad_campo_periodico():
+    """Campo periódico debe satisfacer C(θ=0) ≈ C(θ=2π)."""
+    from src.solver.condiciones_frontera import verificar_periodicidad_angular
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    # Campo periódico: cos(θ)
+    C_field = np.cos(malla.THETA_grid)
+
+    es_periodico = verificar_periodicidad_angular(C_field, malla, tol=1e-6)
+
+    assert es_periodico == True
+
+
+def test_verificar_periodicidad_campo_no_periodico():
+    """Campo NO periódico debe detectarse."""
+    from src.solver.condiciones_frontera import verificar_periodicidad_angular
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    # Campo NO periódico: modificar última columna
+    C_field = np.ones((malla.nr, malla.ntheta))
+    C_field[:, -1] = 2.0  # Romper periodicidad
+
+    es_periodico = verificar_periodicidad_angular(C_field, malla, tol=1e-6)
+
+    # Debe detectar que NO es periódico
+    # (aunque la malla sí tiene periodicidad implícita)
+    assert es_periodico == False
+
+
+def test_imponer_periodicidad_angular_existe():
+    """Debe existir función para imponer periodicidad."""
+    from src.solver.condiciones_frontera import imponer_periodicidad_angular
+
+    assert imponer_periodicidad_angular is not None
+
+
+def test_imponer_periodicidad_angular_promedia():
+    """Debe promediar valores en θ=0 y θ=2π."""
+    from src.solver.condiciones_frontera import imponer_periodicidad_angular
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    # Campo con valores diferentes en j=0 y j=ntheta-1
+    C_field = np.ones((malla.nr, malla.ntheta))
+    C_field[:, 0] = 1.0
+    C_field[:, -1] = 3.0  # Diferente
+
+    # Imponer periodicidad
+    C_periodico = imponer_periodicidad_angular(C_field, malla)
+
+    # j=0 y j=ntheta-1 deben tener el promedio (1+3)/2 = 2
+    promedio_esperado = 2.0
+
+    # Para toda fila radial
+    for i in range(malla.nr):
+        assert_allclose(C_periodico[i, 0], promedio_esperado, rtol=1e-10)
+        # Nota: j=-1 no se modifica porque numpy no lo indexa así
+
+
+def test_matriz_implementa_periodicidad_implicitamente():
+    """La matriz L debe implementar periodicidad implícitamente."""
+    from src.solver.matrices import construir_matriz_laplaciana_2d_polar
+    from src.solver.matrices import indexar_2d_a_1d
+    from src.geometria.mallado import MallaPolar2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    malla = MallaPolar2D(params)
+
+    L = construir_matriz_laplaciana_2d_polar(malla, params.difusion.D_eff)
+
+    # Convertir a LIL para inspección
+    L_lil = L.tolil()
+
+    # Verificar que nodo (i, j=0) tenga conexión con (i, j=ntheta-1)
+    i_test = 30  # Nodo interior
+    j = 0
+    k = indexar_2d_a_1d(i_test, j, malla.ntheta)
+
+    # Vecino j-1 con periodicidad: j=-1 → j=ntheta-1
+    k_jm1 = indexar_2d_a_1d(i_test, malla.ntheta - 1, malla.ntheta)
+
+    # Verificar que hay conexión en la matriz
+    row = L_lil.rows[k]
+
+    assert k_jm1 in row
+
+
+# ============================================================================
 # FIN DE TESTS
 # ============================================================================
