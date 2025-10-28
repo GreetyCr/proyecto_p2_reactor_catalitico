@@ -1,0 +1,277 @@
+# ============================================================================
+# .GITIGNORE - Proyecto Simulación Transferencia de Masa
+# ============================================================================
+# Proyecto: Fenómenos de Transferencia - Reactor Catalítico
+# Autor: Adrián Vargas Tijerino (C18332)
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# PYTHON
+# ----------------------------------------------------------------------------
+# Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ----------------------------------------------------------------------------
+# JUPYTER NOTEBOOKS
+# ----------------------------------------------------------------------------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# Jupyter Notebook backup files
+*-checkpoint.ipynb
+
+# ----------------------------------------------------------------------------
+# TESTING Y COVERAGE
+# ----------------------------------------------------------------------------
+# pytest
+.pytest_cache/
+.pytest_results/
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# pytest-cov
+.coverage.*
+htmlcov/
+
+# ----------------------------------------------------------------------------
+# MYPY (TYPE CHECKING)
+# ----------------------------------------------------------------------------
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ----------------------------------------------------------------------------
+# DATOS Y RESULTADOS (NO SUBIR A GIT)
+# ----------------------------------------------------------------------------
+# Datos de salida (resultados de simulación)
+data/output/*
+!data/output/.gitkeep
+
+# Checkpoints de simulación
+checkpoints/*
+!checkpoints/.gitkeep
+
+# Logs de ejecución
+logs/work_sessions/*.md
+!logs/work_sessions/.gitkeep
+logs/decisions/*.md
+!logs/decisions/.gitkeep
+logs/bugs/*.md
+!logs/bugs/.gitkeep
+logs/features/*.md
+!logs/features/.gitkeep
+
+# EXCEPCIONES: Mantener archivos de contexto
+!logs/context/*.md
+
+# Archivos grandes de simulación
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# ----------------------------------------------------------------------------
+# VISUALIZACIÓN
+# ----------------------------------------------------------------------------
+# Imágenes generadas (pueden ser regeneradas)
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Videos de animaciones
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Archivos SVG generados (gráficos vectoriales)
+# Comentar si quieres versionar SVGs
+# *.svg
+
+# ----------------------------------------------------------------------------
+# DOCUMENTACIÓN
+# ----------------------------------------------------------------------------
+# Sphinx documentation
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# ----------------------------------------------------------------------------
+# IDEs Y EDITORES
+# ----------------------------------------------------------------------------
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Cursor
+.cursor/
+!.cursor/rules/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ----------------------------------------------------------------------------
+# SISTEMA OPERATIVO
+# ----------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ----------------------------------------------------------------------------
+# PROFILING Y DEBUGGING
+# ----------------------------------------------------------------------------
+# Profiling results
+*.prof
+*.lprof
+profile.stats
+
+# Debugging
+*.log
+*.out
+
+# ----------------------------------------------------------------------------
+# TEMPORALES Y BACKUPS
+# ----------------------------------------------------------------------------
+# Archivos temporales
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Backups de editores
+*~
+\#*
+
+# ----------------------------------------------------------------------------
+# CONFIGURACIÓN LOCAL (NO COMPARTIR)
+# ----------------------------------------------------------------------------
+# Configuraciones locales específicas de usuario
+.env
+.env.local
+.venv
+config_local.yaml
+secrets.yaml
+
+# ----------------------------------------------------------------------------
+# ARCHIVOS GRANDES (USAR GIT LFS SI ES NECESARIO)
+# ----------------------------------------------------------------------------
+# Resultados numéricos grandes
+*.npy
+*.npz
+
+# ----------------------------------------------------------------------------
+# OTROS
+# ----------------------------------------------------------------------------
+# Archivos de bloqueo de sistema
+*.lock
+
+# Archivos de caché de Python
+*.pyc
+
+# ============================================================================
+# IMPORTANTE: ARCHIVOS QUE SÍ DEBEN ESTAR EN GIT
+# ============================================================================
+# - requirements.txt
+# - requirements-freeze.txt
+# - README.md
+# - ENUNCIADO_RESUMIDO.md
+# - PARAMETROS_PROYECTO.md
+# - Todos los archivos .py en src/
+# - Todos los tests en tests/
+# - Reglas de Cursor en .cursor/rules/
+# - Logs de contexto en logs/context/
+# - Notebooks de ejemplo (vacíos o con resultados mínimos)
+# - .gitignore (este archivo)
+
+# ============================================================================
+# FIN DE .GITIGNORE
+# ============================================================================
+
