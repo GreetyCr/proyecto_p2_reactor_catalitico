@@ -9,7 +9,7 @@
 Simulación numérica 2D de difusión-reacción de CO en un pellet catalítico cilíndrico con defecto radial, utilizando el método de **Crank-Nicolson** en coordenadas polares.
 
 **Proyecto Personal 2 - Fenómenos de Transferencia**  
-Instituto Tecnológico de Costa Rica
+Universidad de Costa Rica - Escuela de Ingeniería Química
 
 ---
 
@@ -300,21 +300,21 @@ Este es un proyecto académico personal, pero sugerencias y mejoras son bienveni
 
 ## 📜 Licencia
 
-Este proyecto es desarrollado con fines educativos como parte del curso de Fenómenos de Transferencia del Instituto Tecnológico de Costa Rica.
+Este proyecto es desarrollado con fines educativos como parte del curso de Fenómenos de Transferencia de la Universidad de Costa Rica.
 
 ---
 
 ## 👨‍🎓 Autor
 
-**Randall Bonilla**  
+**Adrián Vargas Tijerino**  
 Estudiante de Ingeniería Química  
-Instituto Tecnológico de Costa Rica
+Universidad de Costa Rica
 
 ---
 
 ## 🙏 Agradecimientos
 
-- **Dr. [Nombre Profesor]** - Supervisión y guía académica
+- **Leonardo Garro Mena** - Profesor del curso de Fenómenos de Transferencia, Universidad de Costa Rica - Por su supervisión y guía académica
 - **Wakao & Funazkri (1978)** - Correlación de Sherwood
 - **Crank & Nicolson (1947)** - Método numérico fundacional
 - **Mourkou et al. (2024)** - Difusión de Knudsen en pellets
@@ -337,8 +337,15 @@ Instituto Tecnológico de Costa Rica
 
 <div align="center">
 
+**🎓 Proyecto desarrollado con excelencia académica**
+
+**Universidad de Costa Rica**  
+**Escuela de Ingeniería Química - 2025**
+
+---
+
 **⭐ Si este proyecto te fue útil, considera darle una estrella!**
 
-[![GitHub stars](https://img.shields.io/github/stars/tu-usuario/proyecto_p2_reactor_catalitico?style=social)](https://github.com/tu-usuario/proyecto_p2_reactor_catalitico)
+[![GitHub stars](https://img.shields.io/github/stars/GreetyCr/proyecto_p2_reactor_catalitico?style=social)](https://github.com/GreetyCr/proyecto_p2_reactor_catalitico)
 
 </div>

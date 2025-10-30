@@ -293,8 +293,9 @@ El 5% restante es opcional (post-procesamiento Thiele/η) y puede completarse si
 
 **🎓 Proyecto desarrollado con excelencia académica**
 
-**Instituto Tecnológico de Costa Rica**  
-**Fenómenos de Transferencia - 2025**
+**Universidad de Costa Rica**  
+**Escuela de Ingeniería Química - 2025**  
+**Fenómenos de Transferencia**
 
 </div>
 
