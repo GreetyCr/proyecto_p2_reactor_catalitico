@@ -217,22 +217,30 @@ proyecto_p2_reactor_catalitico/
 ## 🎨 Visualizaciones
 
 ### Gráfico 1: Condición Inicial (t=0)
-<img src="data/output/figures/grafico_1_perfil_t0.png" width="600">
+<div align="center">
+<img src="https://raw.githubusercontent.com/GreetyCr/proyecto_p2_reactor_catalitico/main/data/output/figures/grafico_1_perfil_t0.png" width="600">
+</div>
 
 *Distribución de concentración en t=0. El pellet inicia con C=0 en todo el dominio.*
 
 ### Gráfico 2: Evolución Temporal (50%)
-<img src="data/output/figures/grafico_2_perfil_evolucion.png" width="800">
+<div align="center">
+<img src="https://raw.githubusercontent.com/GreetyCr/proyecto_p2_reactor_catalitico/main/data/output/figures/grafico_2_perfil_evolucion.png" width="800">
+</div>
 
 *Perfil de concentración a la mitad del tiempo hacia estado estacionario.*
 
 ### Gráfico 3: Estado Estacionario
-<img src="data/output/figures/grafico_3_perfil_ss.png" width="900">
+<div align="center">
+<img src="https://raw.githubusercontent.com/GreetyCr/proyecto_p2_reactor_catalitico/main/data/output/figures/grafico_3_perfil_ss.png" width="900">
+</div>
 
 *Distribución final de concentración. Se observa el efecto del defecto en la región sin catalizador.*
 
 ### Análisis Cuantitativo del Defecto
-<img src="data/output/figures/analisis_efecto_defecto_detallado.png" width="900">
+<div align="center">
+<img src="https://raw.githubusercontent.com/GreetyCr/proyecto_p2_reactor_catalitico/main/data/output/figures/analisis_efecto_defecto_detallado.png" width="900">
+</div>
 
 *Análisis detallado mostrando perfiles radiales, diferencias de concentración e histogramas comparativos.*
 
