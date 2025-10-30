@@ -16,6 +16,7 @@ import pytest
 import numpy as np
 from numpy.testing import assert_allclose
 from scipy import sparse
+import logging
 
 
 # ============================================================================
@@ -313,5 +314,181 @@ def test_solver_cn_obtener_info_contenido():
 
 
 # ============================================================================
+# TESTS DE LOOP TEMPORAL Y CONVERGENCIA
+# ============================================================================
+
+
+def test_solver_cn_ejecutar_existe():
+    """Debe existir método ejecutar para loop temporal."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.001)
+
+    assert hasattr(solver, "ejecutar")
+
+
+def test_solver_cn_ejecutar_n_pasos():
+    """ejecutar(n_pasos) debe ejecutar exactamente n pasos."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.001)
+
+    solver.construir_sistema()
+    solver.inicializar_campo(C_inicial=0.0)
+
+    n_pasos = 10
+    solver.ejecutar(n_pasos=n_pasos)
+
+    assert solver.n_iter == n_pasos
+    assert_allclose(solver.t, n_pasos * solver.dt)
+
+
+def test_solver_cn_ejecutar_hasta_tiempo():
+    """ejecutar(t_final) debe ejecutar hasta alcanzar t_final."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.001)
+
+    solver.construir_sistema()
+    solver.inicializar_campo(C_inicial=0.0)
+
+    t_final = 0.010  # 10 ms
+    solver.ejecutar(t_final=t_final)
+
+    # Debe haber alcanzado o superado t_final
+    assert solver.t >= t_final - solver.dt / 2
+
+
+def test_solver_cn_detectar_convergencia_existe():
+    """Debe existir método para detectar convergencia."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.001)
+
+    assert hasattr(solver, "verificar_convergencia")
+
+
+def test_solver_cn_campo_estacionario_convergido():
+    """verificar_convergencia detecta campos casi idénticos."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.001)
+
+    solver.construir_sistema()
+    solver.inicializar_campo(C_inicial=0.01)
+
+    # Guardar campo anterior
+    C_anterior = solver.C.copy()
+    
+    # Modificar campo actual solo un poquito
+    solver.C = solver.C + 1e-6  # Cambio minúsculo
+
+    # Verificar convergencia con campos casi idénticos
+    ha_convergido = solver.verificar_convergencia(C_anterior, tol=1e-4)
+
+    # Debería detectar convergencia
+    assert ha_convergido == True
+
+
+def test_solver_cn_campo_transitorio_no_convergido():
+    """Campo en transitorio debe detectarse como NO convergido."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.001)
+
+    solver.construir_sistema()
+
+    # Inicializar con C=0 (lejos del estado estacionario)
+    solver.inicializar_campo(C_inicial=0.0)
+
+    C_anterior = solver.C.copy()
+
+    # Ejecutar 1 paso
+    solver.paso_temporal()
+
+    # Verificar convergencia
+    ha_convergido = solver.verificar_convergencia(C_anterior, tol=1e-6)
+
+    # NO debería haber convergido
+    assert ha_convergido == False
+
+
+def test_solver_cn_ejecutar_con_convergencia():
+    """ejecutar con check_convergencia debe funcionar sin errores."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.01)
+
+    solver.construir_sistema()
+    solver.inicializar_campo(C_inicial=0.01)  # Cercano a C_bulk
+
+    # Ejecutar SOLO 50 pasos con convergencia
+    # Este test solo verifica que el mecanismo NO crashee
+    solver.ejecutar(
+        n_pasos=50,  # MUY bajo para test rápido
+        check_convergencia=True,
+        tol_convergencia=1e-2  # Tolerancia muy relajada
+    )
+
+    # El test solo verifica que funcione sin errores
+    assert solver.n_iter <= 50
+    assert solver.t > 0
+
+
+# ============================================================================
+# TESTS DE HISTORIAL
+# ============================================================================
+
+
+def test_solver_cn_guardar_historial_existe():
+    """Debe poder guardar historial de la simulación."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.001)
+
+    # Debe tener atributo para habilitar historial
+    assert hasattr(solver, "habilitar_historial")
+
+
+def test_solver_cn_historial_guarda_campos():
+    """Con historial habilitado, debe guardar campos."""
+    from src.solver.crank_nicolson import CrankNicolsonSolver2D
+    from src.config.parametros import ParametrosMaestros
+
+    params = ParametrosMaestros()
+    solver = CrankNicolsonSolver2D(params, dt=0.001)
+
+    solver.habilitar_historial(cada_n_pasos=5)
+    solver.construir_sistema()
+    solver.inicializar_campo(C_inicial=0.0)
+
+    # Ejecutar 20 pasos (debe guardar en pasos 0, 5, 10, 15, 20)
+    solver.ejecutar(n_pasos=20)
+
+    # Debe tener historial
+    assert hasattr(solver, "historial_C")
+    assert hasattr(solver, "historial_t")
+    assert len(solver.historial_C) > 0
+    assert len(solver.historial_t) > 0
+
+
+# ============================================================================
 # FIN DE TESTS
 # ============================================================================
+

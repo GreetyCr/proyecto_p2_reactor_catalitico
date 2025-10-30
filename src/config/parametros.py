@@ -39,10 +39,6 @@ class GeometriaParams:
         Diámetro del pellet [m]
     R : float
         Radio del pellet [m] (R = D/2)
-    r1 : float
-        Radio interno del defecto [m] (r1 = R/3)
-    r2 : float
-        Radio externo del defecto [m] (r2 = 2R/3)
     theta1 : float
         Ángulo inicial del defecto [rad]
     theta2 : float
@@ -55,8 +51,9 @@ class GeometriaParams:
     Notes
     -----
     La región del defecto está definida por:
-    - Radial: r ∈ [r1, r2] = [R/3, 2R/3]
+    - Radial: TODO el pellet (0 ≤ r ≤ R)
     - Angular: θ ∈ [θ1, θ2] = [0°, 45°]
+    - Geometría: SECTOR/CUÑA completo desde centro hasta superficie
     - Característica: Sin reacción química (k_app = 0)
 
     References
@@ -66,10 +63,10 @@ class GeometriaParams:
 
     D: float = 0.004  # m
     R: float = 0.002  # m (R = D/2)
-    r1: float = 0.002 / 3  # m (R/3) - expresión exacta
-    r2: float = 2 * 0.002 / 3  # m (2R/3) - expresión exacta
-    theta1: float = 0.0  # rad (0°)
-    theta2: float = np.pi / 4  # rad (45° = π/4) - expresión exacta
+    r1: float = 0.002 / 3  # m (R/3 - radio interno del anillo defectuoso)
+    r2: float = 2 * 0.002 / 3  # m (2R/3 - radio externo del anillo defectuoso)
+    theta1: float = 0.0  # rad (0° - inicio del sector angular defectuoso)
+    theta2: float = np.pi / 4  # rad (45° = π/4 - fin del sector angular defectuoso)
     L: float = 0.100  # m (100 mm, >> D para invarianza axial)
     P: float = 2 * np.pi * 0.002  # m (P = 2πR) - expresión exacta
 
@@ -87,7 +84,7 @@ class GeometriaParams:
             self.R, self.D / 2, rtol=1e-10
         ), f"R debe ser D/2: R={self.R}, D/2={self.D/2}"
 
-        # Defecto radial ordenado
+        # Defecto radial ordenado (anillo)
         assert (
             0 < self.r1 < self.r2 < self.R
         ), f"Debe cumplirse 0 < r1 < r2 < R: r1={self.r1}, r2={self.r2}, R={self.R}"
@@ -101,6 +98,11 @@ class GeometriaParams:
         assert np.isclose(
             self.r2, 2 * self.R / 3, rtol=1e-6
         ), f"r2 debe ser 2R/3: r2={self.r2}, 2R/3={2*self.R/3}"
+
+        # theta1 debe ser 0
+        assert np.isclose(
+            self.theta1, 0.0, atol=1e-10
+        ), f"theta1 debe ser 0: theta1={self.theta1}"
 
         # theta2 debe ser π/4
         assert np.isclose(

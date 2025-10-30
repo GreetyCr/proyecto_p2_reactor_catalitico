@@ -141,6 +141,12 @@ class CrankNicolsonSolver2D:
         self.B = None
         self.b_robin = None
 
+        # Historial (opcional)
+        self._guardar_historial = False
+        self._cada_n_pasos = 1
+        self.historial_C = []
+        self.historial_t = []
+
         logger.info(f"Solver inicializado con dt = {dt:.3e} s")
 
     def construir_sistema(self):
@@ -177,6 +183,8 @@ class CrankNicolsonSolver2D:
             self.params.difusion.D_eff,
             self.params.transferencia.k_c,
             self.params.operacion.C_bulk,
+            k_app_field=self.k_app_field,
+            dt=self.dt,
         )
 
         # Guardar matrices
@@ -188,6 +196,7 @@ class CrankNicolsonSolver2D:
             self.malla,
             self.params.transferencia.k_c,
             self.params.operacion.C_bulk,
+            self.dt,
         )
 
         logger.info(f"Sistema construido: A nnz={A.nnz}, B nnz={B.nnz}")
@@ -336,7 +345,167 @@ Parámetros:
 
         return reporte
 
+    def verificar_convergencia(
+        self, C_anterior: np.ndarray, tol: float = 1e-6
+    ) -> bool:
+        """
+        Verifica si la solución ha convergido al estado estacionario.
+
+        Criterio: ||C^(n+1) - C^n||_∞ / ||C^n||_∞ < tol
+
+        Parameters
+        ----------
+        C_anterior : np.ndarray
+            Campo de concentración del paso anterior
+        tol : float, optional
+            Tolerancia de convergencia (default: 1e-6)
+
+        Returns
+        -------
+        convergido : bool
+            True si ha convergido
+        """
+        # Diferencia máxima
+        diff = np.abs(self.C - C_anterior)
+        max_diff = np.max(diff)
+
+        # Normalizar por magnitud del campo
+        max_C = np.max(np.abs(C_anterior))
+        if max_C > 1e-12:
+            variacion_relativa = max_diff / max_C
+        else:
+            variacion_relativa = max_diff
+
+        convergido = variacion_relativa < tol
+
+        if convergido:
+            logger.info(
+                f"✓ Convergencia alcanzada: variación={variacion_relativa:.3e} < {tol:.3e}"
+            )
+
+        return convergido
+
+    def habilitar_historial(self, cada_n_pasos: int = 1):
+        """
+        Habilita guardado de historial de la simulación.
+
+        Parameters
+        ----------
+        cada_n_pasos : int, optional
+            Guardar cada n pasos (default: 1 = todos)
+        """
+        self._guardar_historial = True
+        self._cada_n_pasos = cada_n_pasos
+
+        # Limpiar historial previo
+        self.historial_C = []
+        self.historial_t = []
+
+        logger.info(f"Historial habilitado (cada {cada_n_pasos} pasos)")
+
+    def _guardar_en_historial(self):
+        """Guarda el estado actual en el historial."""
+        if self._guardar_historial:
+            if self.n_iter % self._cada_n_pasos == 0:
+                self.historial_C.append(self.C.copy())
+                self.historial_t.append(self.t)
+
+    def ejecutar(
+        self,
+        n_pasos: Optional[int] = None,
+        t_final: Optional[float] = None,
+        check_convergencia: bool = False,
+        tol_convergencia: float = 1e-6,
+    ):
+        """
+        Ejecuta el loop temporal del solver.
+
+        Modos de ejecución:
+        1. n_pasos: Ejecutar número fijo de pasos
+        2. t_final: Ejecutar hasta alcanzar tiempo final
+        3. check_convergencia: Ejecutar hasta convergencia
+
+        Parameters
+        ----------
+        n_pasos : int, optional
+            Número de pasos a ejecutar
+        t_final : float, optional
+            Tiempo final a alcanzar [s]
+        check_convergencia : bool, optional
+            Si True, detiene al converger (default: False)
+        tol_convergencia : float, optional
+            Tolerancia de convergencia (default: 1e-6)
+
+        Notes
+        -----
+        - Solo uno de n_pasos o t_final debe especificarse
+        - Si check_convergencia=True, puede detenerse antes
+
+        Examples
+        --------
+        >>> solver.ejecutar(n_pasos=1000)  # 1000 pasos fijos
+        >>> solver.ejecutar(t_final=1.0)  # Hasta t=1s
+        >>> solver.ejecutar(n_pasos=10000, check_convergencia=True)  # Hasta convergencia
+        """
+        logger.info("=" * 70)
+        logger.info("INICIANDO LOOP TEMPORAL")
+        logger.info("=" * 70)
+
+        # Validar argumentos
+        if n_pasos is None and t_final is None:
+            raise ValueError("Debe especificar n_pasos o t_final")
+
+        if n_pasos is not None and t_final is not None:
+            raise ValueError("Solo puede especificar n_pasos O t_final, no ambos")
+
+        # Determinar número máximo de pasos
+        if n_pasos is not None:
+            n_pasos_max = n_pasos
+        else:
+            # Calcular pasos necesarios para alcanzar t_final
+            n_pasos_max = int(np.ceil((t_final - self.t) / self.dt))
+
+        logger.info(f"Pasos máximos: {n_pasos_max}")
+        if check_convergencia:
+            logger.info(f"Detección de convergencia: tol={tol_convergencia:.3e}")
+
+        # Guardar estado inicial si historial habilitado
+        if self._guardar_historial and self.n_iter == 0:
+            self._guardar_en_historial()
+
+        # Loop temporal
+        for paso in range(n_pasos_max):
+            # Guardar campo anterior para verificar convergencia
+            if check_convergencia:
+                C_anterior = self.C.copy()
+
+            # Ejecutar paso temporal
+            self.paso_temporal()
+
+            # Guardar en historial si corresponde
+            self._guardar_en_historial()
+
+            # Verificar convergencia
+            if check_convergencia:
+                if self.verificar_convergencia(C_anterior, tol=tol_convergencia):
+                    logger.info(f"Convergencia alcanzada en paso {self.n_iter}")
+                    break
+
+            # Si modo t_final, verificar si alcanzamos el tiempo
+            if t_final is not None:
+                if self.t >= t_final:
+                    logger.info(f"Tiempo final alcanzado: t={self.t:.6f}s")
+                    break
+
+        logger.info("=" * 70)
+        logger.info("LOOP TEMPORAL COMPLETADO")
+        logger.info(f"Pasos ejecutados: {self.n_iter}")
+        logger.info(f"Tiempo final: {self.t:.6f} s")
+        logger.info(f"C ∈ [{np.min(self.C):.3e}, {np.max(self.C):.3e}] mol/m³")
+        logger.info("=" * 70)
+
 
 # ============================================================================
 # FIN DEL MÓDULO
 # ============================================================================
+

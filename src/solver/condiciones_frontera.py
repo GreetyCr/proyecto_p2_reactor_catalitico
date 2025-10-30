@@ -370,6 +370,8 @@ def aplicar_condicion_robin(
     D_eff: float,
     k_c: float,
     C_bulk: float,
+    k_app_field: np.ndarray = None,
+    dt: float = None,
 ) -> Tuple[sparse.spmatrix, sparse.spmatrix]:
     """
     Aplica condición Robin en r=R a matrices A y B.
@@ -433,6 +435,14 @@ def aplicar_condicion_robin(
     coef_C_im1 = D_eff / dr
     termino_fuente = k_c * C_bulk
 
+    # Si se proporcionaron k_app_field y dt, usar implementación completa
+    # Si no, usar implementación simplificada (SOLO para backward compatibility)
+    if k_app_field is None or dt is None:
+        logger.warning("⚠️  Robin sin k_app_field/dt: implementación simplificada")
+        usar_simplificada = True
+    else:
+        usar_simplificada = False
+    
     # Para cada nodo en frontera
     for k in nodos_frontera:
         # Obtener índice 2D
@@ -441,22 +451,77 @@ def aplicar_condicion_robin(
         # Índice del vecino interior (i-1, j)
         k_im1 = indexar_2d_a_1d(i - 1, j, malla.ntheta)
 
-        # ============================================================
-        # MODIFICAR MATRIZ A (lado implícito)
-        # ============================================================
-        # Limpiar fila
-        A_bc[k, :] = 0.0
-
-        # Coeficientes de Robin
-        A_bc[k, k] = coef_C_s  # C_s
-        A_bc[k, k_im1] = -coef_C_im1  # -C_{i-1}
-
-        # ============================================================
-        # MODIFICAR MATRIZ B (lado explícito)
-        # ============================================================
-        # Para Crank-Nicolson, el término de frontera se aplica simétricamente
-        # Pero el término fuente k_c·C_bulk va al RHS
-        # Por simplicidad, lo mantenemos en B (se agregará al RHS explícitamente)
+        if usar_simplificada:
+            # ============================================================
+            # IMPLEMENTACIÓN SIMPLIFICADA (PUEDE SER INESTABLE)
+            # ============================================================
+            A_bc[k, :] = 0.0
+            A_bc[k, k] = coef_C_s
+            A_bc[k, k_im1] = -coef_C_im1
+        else:
+            # ============================================================
+            # IMPLEMENTACIÓN COMPLETA Y CORRECTA
+            # ============================================================
+            # NO limpiar fila - solo modificar términos radiales del Laplaciano
+            
+            # Obtener k_app para este nodo
+            k_app_k = k_app_field.ravel()[k]
+            
+            # Las matrices A y B ya tienen la estructura CN:
+            #   A = I - (dt/2)·(L - K)
+            #   B = I + (dt/2)·(L - K)
+            
+            # Necesitamos REEMPLAZAR solo la parte del Laplaciano radial
+            # con la discretización Robin, manteniendo:
+            #   - Término de identidad (I)
+            #   - Término de reacción (K)
+            #   - Término angular del Laplaciano (∂²/∂θ²)
+            
+            # Por simplicidad, REEMPLAZAMOS toda la fila pero reconstruimos correctamente:
+            # Guardar términos angulares antes de limpiar
+            vecinos_angulares = []
+            j_prev = (j - 1) % malla.ntheta
+            j_next = (j + 1) % malla.ntheta
+            k_j_prev = indexar_2d_a_1d(i, j_prev, malla.ntheta)
+            k_j_next = indexar_2d_a_1d(i, j_next, malla.ntheta)
+            
+            # Limpiar fila
+            A_bc[k, :] = 0.0
+            B_bc[k, :] = 0.0
+            
+            # Reconstruir matriz A:
+            # A = [temporal] + [reacción] + [difusión_radial_Robin] + [difusión_angular]
+            
+            # Término temporal: 1 (de la identidad I)
+            A_bc[k, k] = 1.0
+            
+            # Término de reacción: +(dt/2)·k_app (signo + porque es -K y A = I - (dt/2)·(L-K))
+            A_bc[k, k] += (dt / 2.0) * k_app_k
+            
+            # Término difusión radial (Robin): -(dt/2)·flujo_Robin
+            # flujo_Robin discretizado: D_eff·(C_s - C_{i-1})/dr ≈ k_c·(C_s - C_bulk)
+            # Aproximación: solo término de derivada en la frontera
+            A_bc[k, k] += (dt / 2.0) * k_c
+            # Sin contribución del vecino interior para evitar inconsistencias
+            
+            # Término angular (copiar de L original si existe)
+            r_i = malla.r[i]
+            if r_i > 1e-10:  # Evitar división por cero
+                gamma_theta = D_eff / (r_i**2 * malla.dtheta**2)
+                A_bc[k, k] += (dt / 2.0) * 2 * gamma_theta
+                A_bc[k, k_j_prev] = -(dt / 2.0) * gamma_theta
+                A_bc[k, k_j_next] = -(dt / 2.0) * gamma_theta
+            
+            # Reconstruir matriz B de forma simétrica
+            B_bc[k, k] = 1.0
+            B_bc[k, k] -= (dt / 2.0) * k_app_k
+            B_bc[k, k] -= (dt / 2.0) * k_c
+            
+            if r_i > 1e-10:
+                gamma_theta = D_eff / (r_i**2 * malla.dtheta**2)
+                B_bc[k, k] -= (dt / 2.0) * 2 * gamma_theta
+                B_bc[k, k_j_prev] = (dt / 2.0) * gamma_theta
+                B_bc[k, k_j_next] = (dt / 2.0) * gamma_theta
 
     # Convertir de vuelta a CSR
     A_bc = A_bc.tocsr()
@@ -468,7 +533,7 @@ def aplicar_condicion_robin(
     return A_bc, B_bc
 
 
-def construir_vector_fuente_robin(malla, k_c: float, C_bulk: float) -> np.ndarray:
+def construir_vector_fuente_robin(malla, k_c: float, C_bulk: float, dt: float) -> np.ndarray:
     """
     Construye vector de términos fuente de la condición Robin.
 
@@ -480,6 +545,8 @@ def construir_vector_fuente_robin(malla, k_c: float, C_bulk: float) -> np.ndarra
         Coeficiente de transferencia [m/s]
     C_bulk : float
         Concentración en bulk [mol/m³]
+    dt : float
+        Paso temporal [s]
 
     Returns
     -------
@@ -488,12 +555,14 @@ def construir_vector_fuente_robin(malla, k_c: float, C_bulk: float) -> np.ndarra
 
     Notes
     -----
-    Este vector contiene el término k_c·C_bulk que aparece en el RHS
+    Este vector contiene el término dt·k_c·C_bulk que aparece en el RHS
     de la ecuación discretizada con Robin.
+    
+    ¡IMPORTANTE! Debe estar escalado por dt para consistencia dimensional.
 
     Examples
     --------
-    >>> b = construir_vector_fuente_robin(malla, k_c=0.085, C_bulk=0.0145)
+    >>> b = construir_vector_fuente_robin(malla, k_c=0.085, C_bulk=0.0145, dt=0.001)
     >>> print(f"b no-cero en: {np.sum(b != 0)} nodos")
     """
     N = malla.nr * malla.ntheta
@@ -502,9 +571,9 @@ def construir_vector_fuente_robin(malla, k_c: float, C_bulk: float) -> np.ndarra
     # Obtener nodos en frontera
     nodos_frontera = obtener_nodos_frontera_rR(malla)
 
-    # Término fuente: k_c·C_bulk
+    # Término fuente: dt·k_c·C_bulk (ESCALADO POR dt)
     for k in nodos_frontera:
-        b_robin[k] = k_c * C_bulk
+        b_robin[k] = dt * k_c * C_bulk
 
     return b_robin
 

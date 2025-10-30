@@ -84,8 +84,6 @@ class MallaPolar2D:
 
         # Extraer parámetros de geometría
         self.R = params.geometria.R
-        self.r1 = params.geometria.r1
-        self.r2 = params.geometria.r2
         self.theta1 = params.geometria.theta1
         self.theta2 = params.geometria.theta2
 
@@ -156,7 +154,7 @@ class MallaPolar2D:
 
     def identificar_region_defecto(self) -> np.ndarray:
         """
-        Identifica la región del defecto (k_app = 0).
+        Identifica la región del defecto (k_app = 0) como ANILLO.
 
         Returns
         -------
@@ -165,23 +163,26 @@ class MallaPolar2D:
 
         Notes
         -----
-        Región de defecto:
-        - Radial: r ∈ [r1, r2] = [R/3, 2R/3]
+        Región de defecto: ANILLO (annular sector)
+        - Radial: r1 ≤ r ≤ r2 (R/3 ≤ r ≤ 2R/3)
         - Angular: θ ∈ [θ1, θ2] = [0°, 45°]
+        - Geometría: "Rectángulo polar" con 4 bordes (2 radiales + 2 arcos)
 
         Examples
         --------
         >>> mascara = malla.identificar_region_defecto()
         >>> n_nodos_defecto = mascara.sum()
         """
-        # Condiciones para estar en defecto
-        en_rango_radial = (self.R_grid >= self.r1) & (self.R_grid <= self.r2)
-        en_rango_angular = (self.THETA_grid >= self.theta1) & (
+        # Obtener límites del anillo defectuoso
+        r1 = self.params.geometria.r1  # R/3
+        r2 = self.params.geometria.r2  # 2R/3
+        
+        # Defecto = condición radial Y angular
+        mascara_radial = (self.R_grid >= r1) & (self.R_grid <= r2)
+        mascara_angular = (self.THETA_grid >= self.theta1) & (
             self.THETA_grid <= self.theta2
         )
-
-        # Defecto = ambas condiciones
-        mascara_defecto = en_rango_radial & en_rango_angular
+        mascara_defecto = mascara_radial & mascara_angular
 
         return mascara_defecto
 
@@ -333,7 +334,7 @@ class MallaPolar2D:
 
     def calcular_area_defecto(self) -> float:
         """
-        Calcula el área de la región de defecto (sector anular).
+        Calcula el área de la región de defecto (ANILLO).
 
         Returns
         -------
@@ -343,13 +344,18 @@ class MallaPolar2D:
         Notes
         -----
         Área de sector anular:
-        A_defecto = (θ2 - θ1) × (r2² - r1²) / 2
+        A_defecto = (1/2) × (θ2 - θ1) × (r2² - r1²)
+
+        El defecto es un ANILLO que va desde r1=R/3 hasta r2=2R/3,
+        con apertura angular de 0° a 45°.
 
         Examples
         --------
         >>> area_def = malla.calcular_area_defecto()
         """
-        return (self.theta2 - self.theta1) * (self.r2**2 - self.r1**2) / 2
+        r1 = self.params.geometria.r1
+        r2 = self.params.geometria.r2
+        return 0.5 * (self.theta2 - self.theta1) * (r2**2 - r1**2)
 
     def calcular_fraccion_defecto(self) -> float:
         """

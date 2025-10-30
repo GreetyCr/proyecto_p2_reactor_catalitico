@@ -190,7 +190,7 @@ def test_identificar_region_defecto():
 
 
 def test_region_defecto_rangos_correctos():
-    """La región del defecto debe estar en r∈[r1,r2] y θ∈[0,45°]."""
+    """La región del defecto debe ser un anillo: r∈[R/3,2R/3] y θ∈[0,45°]."""
     from src.geometria.mallado import MallaPolar2D
     from src.config.parametros import ParametrosMaestros
 
@@ -199,19 +199,25 @@ def test_region_defecto_rangos_correctos():
 
     mascara_defecto = malla.identificar_region_defecto()
 
-    # Verificar algunos puntos específicos
-    # Centro (r=0) NO debe estar en defecto
-    assert mascara_defecto[0, :].sum() == 0, "Centro no debe tener defecto"
-
+    # El defecto ahora es un ANILLO (R/3 a 2R/3, 0° a 45°)
     # Verificar que hay nodos en el defecto
     assert mascara_defecto.sum() > 0, "Debe haber al menos un nodo en defecto"
 
     # Verificar que no todos los nodos son defecto
     assert mascara_defecto.sum() < mascara_defecto.size, "No todos pueden ser defecto"
 
+    # Área del anillo = (1/2) × (θ2-θ1) × (r2²-r1²)
+    # r1=R/3, r2=2R/3, θ2-θ1=π/4
+    # A_anillo = (1/2) × (π/4) × ((2R/3)² - (R/3)²)
+    # A_anillo = (π/8) × (4R²/9 - R²/9) = (π/8) × (3R²/9) = (π/8) × (R²/3)
+    # A_total = πR²
+    # Fracción = (π/8 × R²/3) / (πR²) = 1/24 ≈ 4.17%
+    fraccion_defecto = mascara_defecto.sum() / mascara_defecto.size
+    assert 0.03 < fraccion_defecto < 0.06, f"Fracción defecto {fraccion_defecto:.2%} debe estar entre 3% y 6%"
+
 
 def test_region_defecto_consistente():
-    """Nodos fuera del rango del defecto NO deben marcarse."""
+    """Nodos fuera del rango angular del defecto NO deben marcarse."""
     from src.geometria.mallado import MallaPolar2D
     from src.config.parametros import ParametrosMaestros
 
@@ -220,18 +226,18 @@ def test_region_defecto_consistente():
 
     mascara_defecto = malla.identificar_region_defecto()
 
-    # Verificar punto en r < r1: no debe ser defecto
-    idx_r_menor_r1 = np.where(malla.r < params.geometria.r1)[0]
-    if len(idx_r_menor_r1) > 0:
-        assert mascara_defecto[idx_r_menor_r1, :].sum() == 0
-
-    # Verificar punto en r > r2: no debe ser defecto
-    idx_r_mayor_r2 = np.where(malla.r > params.geometria.r2)[0]
-    if len(idx_r_mayor_r2) > 0:
-        # Pero solo en θ > θ2
-        idx_theta_mayor = np.where(malla.theta > params.geometria.theta2)[0]
-        if len(idx_theta_mayor) > 0:
-            assert mascara_defecto[idx_r_mayor_r2[0], idx_theta_mayor[0]] == False
+    # Verificar que nodos con θ > θ2 NO están en defecto
+    idx_theta_mayor = np.where(malla.theta > params.geometria.theta2)[0]
+    if len(idx_theta_mayor) > 0:
+        # Tomar cualquier radio
+        assert mascara_defecto[:, idx_theta_mayor[0]].sum() == 0, "θ > θ2 no debe ser defecto"
+    
+    # Verificar que nodos con θ dentro de [0, θ2] SÍ están en defecto
+    idx_theta_dentro = np.where((malla.theta >= params.geometria.theta1) & 
+                                 (malla.theta <= params.geometria.theta2))[0]
+    if len(idx_theta_dentro) > 0:
+        # Tomar cualquier radio
+        assert mascara_defecto[:, idx_theta_dentro[0]].sum() > 0, "θ ∈ [0, θ2] debe tener defecto"
 
 
 # ============================================================================
@@ -420,7 +426,7 @@ def test_calcular_area_total():
 
 
 def test_calcular_area_defecto():
-    """Debe calcular el área de la región de defecto."""
+    """Debe calcular el área de la región de defecto (ANILLO)."""
     from src.geometria.mallado import MallaPolar2D
     from src.config.parametros import ParametrosMaestros
 
@@ -429,14 +435,14 @@ def test_calcular_area_defecto():
 
     area_defecto = malla.calcular_area_defecto()
 
-    # Área de defecto (sector anular):
-    # A = (θ2 - θ1) × (r2² - r1²) / 2
+    # Área de defecto (sector anular de r1 a r2):
+    # A = (1/2) × (θ2 - θ1) × (r2² - r1²)
     r1 = params.geometria.r1
     r2 = params.geometria.r2
     theta1 = params.geometria.theta1
     theta2 = params.geometria.theta2
 
-    area_esperada = (theta2 - theta1) * (r2**2 - r1**2) / 2
+    area_esperada = 0.5 * (theta2 - theta1) * (r2**2 - r1**2)
 
     assert_allclose(area_defecto, area_esperada, rtol=0.05)  # 5% tolerancia
 

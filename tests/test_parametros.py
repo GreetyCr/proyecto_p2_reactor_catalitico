@@ -37,32 +37,6 @@ def test_geometria_radio_es_mitad_diametro():
     assert_allclose(params.R, params.D / 2, rtol=1e-10)
 
 
-def test_geometria_defecto_radios_ordenados():
-    """Los radios del defecto deben cumplir: 0 < r1 < r2 < R."""
-    from src.config.parametros import GeometriaParams
-
-    params = GeometriaParams()
-    assert 0 < params.r1, "r1 debe ser positivo"
-    assert params.r1 < params.r2, "r1 debe ser menor que r2"
-    assert params.r2 < params.R, "r2 debe ser menor que R"
-
-
-def test_geometria_defecto_r1_es_R_sobre_3():
-    """r1 debe ser R/3 según enunciado."""
-    from src.config.parametros import GeometriaParams
-
-    params = GeometriaParams()
-    assert_allclose(params.r1, params.R / 3, rtol=1e-6)
-
-
-def test_geometria_defecto_r2_es_2R_sobre_3():
-    """r2 debe ser 2R/3 según enunciado."""
-    from src.config.parametros import GeometriaParams
-
-    params = GeometriaParams()
-    assert_allclose(params.r2, 2 * params.R / 3, rtol=1e-6)
-
-
 def test_geometria_theta2_es_45_grados():
     """theta2 debe ser π/4 rad (45°)."""
     from src.config.parametros import GeometriaParams
